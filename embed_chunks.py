@@ -1,14 +1,18 @@
 import json
 import os
+import time
 
 import chromadb
 from dotenv import load_dotenv
 from google import genai
+from google.genai import errors
 from google.genai import types
 
 
 EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
 COLLECTION_NAME = "pokemon_market_reddit_gemini"
+REQUEST_DELAY_SECONDS = float(os.getenv("GEMINI_EMBEDDING_DELAY_SECONDS", "0.75"))
+MAX_RETRIES = 3
 
 
 load_dotenv()
@@ -20,15 +24,24 @@ def load_chunks(path="chunks.json"):
 
 
 def embed_document(gemini_client, text, title):
-    response = gemini_client.models.embed_content(
-        model=EMBEDDING_MODEL,
-        contents=text,
-        config=types.EmbedContentConfig(
-            task_type="RETRIEVAL_DOCUMENT",
-            title=title,
-        ),
-    )
-    return response.embeddings[0].values
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = gemini_client.models.embed_content(
+                model=EMBEDDING_MODEL,
+                contents=text,
+                config=types.EmbedContentConfig(
+                    task_type="RETRIEVAL_DOCUMENT",
+                    title=title,
+                ),
+            )
+            return response.embeddings[0].values
+        except errors.ClientError as exc:
+            if exc.status_code != 429 or attempt == MAX_RETRIES:
+                raise
+
+            wait_seconds = 30
+            print(f"Rate limit hit. Waiting {wait_seconds}s before retry {attempt + 1}.")
+            time.sleep(wait_seconds)
 
 
 def build_collection():
@@ -62,6 +75,7 @@ def build_collection():
         )
 
         print(f"Upserted {chunk['chunk_id']}")
+        time.sleep(REQUEST_DELAY_SECONDS)
 
     print(f"Collection count: {collection.count()}")
 
