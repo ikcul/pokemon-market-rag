@@ -7,7 +7,7 @@ The system collects Reddit posts from `r/PokeInvesting`, inspects whether the ra
 This project intentionally avoids LangChain and LlamaIndex so the mechanics are explicit and interview-defensible.
 
 ## Pipeline
-
+ 
 ```text
 Reddit API
   -> posts.json
